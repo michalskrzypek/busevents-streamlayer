@@ -1,0 +1,66 @@
+name: "KafkaToCassandra"
+#defining the components with their class paths
+components:
+  - id: "stringScheme"
+    className: "storm.kafka.StringScheme"
+
+  - id: "stringMultiScheme"
+    className: "backtype.storm.spout.SchemeAsMultiScheme"
+    constructorArgs:
+      - ref: "stringScheme"
+  #defining the zookeeper hosts
+  - id: "zkHosts"
+    className: "storm.kafka.ZkHosts"
+    constructorArgs:
+      #from config.properties file
+      - "${kafka.consumer.zookeeper.hosts}"
+
+  # Configurations for spout
+  - id: "KafkaTopicConfig"
+    className: "storm.kafka.SpoutConfig"
+    constructorArgs:
+      - ref: "zkHosts"
+      - "${spout.kafka.topic}"
+      - ""
+      - "KafkaToCassandra"
+    properties:
+      - name: "ignoreZkOffsets"
+        value: false
+      - name: "scheme"
+        ref: "stringMultiScheme"
+      - name: "fetchSizeBytes"
+        value: 8388608
+
+#topology configurations
+config:
+  topology.workers: 6
+  topology.acker.executors: 3
+  topology.executor.send.buffer.size: 16384
+  topology.executor.receive.buffer.size: 16384
+  topology.transfer.buffer.size: 32
+  kafka.broker.properties:
+    metadata.broker.list: "${kafka.broker.list}"
+    request.required.acks: "1"
+    serializer.class: "kafka.serializer.StringEncoder"
+
+#defining the spout and referencing as Kafka
+spouts:
+  - id: "KafkaReadSpout"
+    className: "storm.kafka.KafkaSpout"
+    parallelism: 1
+    constructorArgs:
+      - ref: "KafkaTopicConfig"
+
+#defining the bolt here
+bolts:
+  - id: "RecordGeneratorBolt"
+    className: "topology.RecordGeneratorBolt"
+    parallelism: 1
+
+#defining the flow of the topology
+streams:
+  - name: "KafkaReadSpout --> RecordGeneratorBolt"
+    from: "KafkaReadSpout"
+    to: "RecordGeneratorBolt"
+    grouping:
+      type: SHUFFLE
